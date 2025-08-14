@@ -42,7 +42,7 @@ $mail = new PHPMailer(true);
 
 try {
     // Серверные настройки
-    $mail->SMTPDebug = $config['smtp_debug']; // Включение отладки
+    $mail->SMTPDebug = $config['smtp_debug'];
     $mail->isSMTP();
     $mail->Host = $config['smtp_host'];
     $mail->SMTPAuth = true;
@@ -51,7 +51,11 @@ try {
     $mail->SMTPSecure = $config['smtp_secure'];
     $mail->Port = $config['smtp_port'];
     
-    // Дополнительные настройки для улучшения соединения
+    // Настройки кодировки
+    $mail->CharSet = 'UTF-8'; // Устанавливаем кодировку
+    $mail->Encoding = 'base64'; // Кодировка заголовков
+    
+    // Дополнительные настройки
     $mail->SMTPOptions = [
         'ssl' => [
             'verify_peer' => false,
@@ -59,15 +63,14 @@ try {
             'allow_self_signed' => true
         ]
     ];
-    $mail->Timeout = 30; // Таймаут соединения
 
     // Получатели
-    $mail->setFrom($config['smtp_username']);
+    $mail->setFrom($config['smtp_username'], 'Имя отправителя'); // Можно указать имя в UTF-8
     $mail->addAddress($input['to']);
 
     // Содержание письма
     $mail->isHTML(false);
-    $mail->Subject = $input['subject'];
+    $mail->Subject = '=?UTF-8?B?'.base64_encode($input['subject']).'?='; // Кодировка темы
     $mail->Body = $input['body'];
 
     $mail->send();
