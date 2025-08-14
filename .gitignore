@@ -1,0 +1,4 @@
+/vendor
+composer.*
+config.php
+Thumbs.db
