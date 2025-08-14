@@ -4,54 +4,77 @@ $config = [
     'smtp_username' => 'user@example.com',
     'smtp_password' => 'password',
     'smtp_port' => 587,
-    'smtp_secure' => 'tls'
+    'smtp_secure' => 'tls',
+    'smtp_debug' => 2 // Уровень отладки (0-4)
 ];
 
-// Получаем входные данные из разных источников
+// Получаем данные
 $input = [];
 if (php_sapi_name() === 'cli') {
     parse_str(implode('&', array_slice($argv, 1)), $input);
 } else {
     $input = array_merge($_GET, $_POST);
-    if (!empty(file_get_contents('php://input'))) {
-        $json = json_decode(file_get_contents('php://input'), true);
-        if ($json) $input = array_merge($input, $json);
-    }
+    $json = json_decode(file_get_contents('php://input'), true);
+    if ($json) $input = array_merge($input, $json);
 }
 
-// Обновляем конфиг переданными параметрами
+// Обновляем конфиг
 foreach ($config as $key => $value) {
     if (isset($input[$key])) {
         $config[$key] = $input[$key];
     }
 }
 
-// Проверяем обязательные параметры
-$to = $input['to'] ?? die("Укажите получателя (параметр 'to')\n");
-$subject = $input['subject'] ?? die("Укажите тему (параметр 'subject')\n");
-$body = $input['body'] ?? die("Укажите текст письма (параметр 'body')\n");
-
-// Отправка
-require 'vendor/autoload.php';
-use PHPMailer\PHPMailer\PHPMailer;
-
-$mail = new PHPMailer();
-$mail->isSMTP();
-$mail->Host = $config['smtp_host'];
-$mail->SMTPAuth = true;
-$mail->Username = $config['smtp_username'];
-$mail->Password = $config['smtp_password'];
-$mail->Port = $config['smtp_port']; 
-$mail->SMTPSecure = $config['smtp_secure'];
-
-$mail->setFrom($config['smtp_username']);
-$mail->addAddress($to);
-$mail->Subject = $subject;
-$mail->Body = $body;
-
-if ($mail->send()) {
-    echo json_encode(['status' => 'success']);
-} else {
-    echo json_encode(['status' => 'error', 'message' => $mail->ErrorInfo]);
+// Проверяем обязательные поля
+$required = ['to', 'subject', 'body'];
+foreach ($required as $field) {
+    if (empty($input[$field])) {
+        die(json_encode(['status' => 'error', 'message' => "Missing parameter: $field"]));
+    }
 }
 
+require 'vendor/autoload.php';
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\SMTP;
+use PHPMailer\PHPMailer\Exception;
+
+$mail = new PHPMailer(true);
+
+try {
+    // Серверные настройки
+    $mail->SMTPDebug = $config['smtp_debug']; // Включение отладки
+    $mail->isSMTP();
+    $mail->Host = $config['smtp_host'];
+    $mail->SMTPAuth = true;
+    $mail->Username = $config['smtp_username'];
+    $mail->Password = $config['smtp_password'];
+    $mail->SMTPSecure = $config['smtp_secure'];
+    $mail->Port = $config['smtp_port'];
+    
+    // Дополнительные настройки для улучшения соединения
+    $mail->SMTPOptions = [
+        'ssl' => [
+            'verify_peer' => false,
+            'verify_peer_name' => false,
+            'allow_self_signed' => true
+        ]
+    ];
+    $mail->Timeout = 30; // Таймаут соединения
+
+    // Получатели
+    $mail->setFrom($config['smtp_username']);
+    $mail->addAddress($input['to']);
+
+    // Содержание письма
+    $mail->isHTML(false);
+    $mail->Subject = $input['subject'];
+    $mail->Body = $input['body'];
+
+    $mail->send();
+    echo json_encode(['status' => 'success']);
+} catch (Exception $e) {
+    echo json_encode([
+        'status' => 'error',
+        'message' => "Message could not be sent. Mailer Error: {$mail->ErrorInfo}"
+    ]);
+}
