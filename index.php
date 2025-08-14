@@ -1,83 +1,78 @@
 <?php
-$config = [
-    'smtp_host' => 'smtp.example.com',
-    'smtp_username' => 'user@example.com',
-    'smtp_password' => 'password',
-    'smtp_port' => 587,
-    'smtp_secure' => 'tls',
-    'smtp_debug' => 2 // Уровень отладки (0-4)
+
+ini_set('display_errors', '1');
+ini_set('display_startup_errors', '1');
+error_reporting(E_ALL);
+
+
+$config = require_once 'config.php';
+
+$input = parseInput();
+
+$request = array_merge($input, ['config'=>$config]);
+
+$routes = [
+    // '/' => 'HomeController@index',
+    // '/about' => 'AboutController@index',
+    // '/contact' => 'ContactController@submit',
+    '/mailer22/send' => 'MailController@send',
 ];
 
-// Получаем данные
-$input = [];
-if (php_sapi_name() === 'cli') {
-    parse_str(implode('&', array_slice($argv, 1)), $input);
+$uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+
+if (array_key_exists($uri, $routes)) {
+    list($controller, $method) = explode('@', $routes[$uri]);
+    require_once "controllers/$controller.php";
+    $result = (new $controller())->$method($request);
+    echo json_encode($result);
 } else {
-    $input = array_merge($_GET, $_POST);
-    $json = json_decode(file_get_contents('php://input'), true);
-    if ($json) $input = array_merge($input, $json);
+    http_response_code(404);
+    echo '404 Not Found';
 }
 
-// Обновляем конфиг
-foreach ($config as $key => $value) {
-    if (isset($input[$key])) {
-        $config[$key] = $input[$key];
+
+
+
+
+
+
+
+/*
+function parseInput() {  // previous version
+    // Получаем данные
+    $input = [];
+    if (php_sapi_name() === 'cli') {
+        parse_str(implode('&', array_slice($argv, 1)), $input);
+    } else {
+        $input = array_merge($_GET, $_POST);
+        $json = json_decode(file_get_contents('php://input'), true);
+        if ($json) $input = array_merge($input, $json);
     }
+    return $input;
 }
+*/
 
-// Проверяем обязательные поля
-$required = ['to', 'subject', 'body'];
-foreach ($required as $field) {
-    if (empty($input[$field])) {
-        die(json_encode(['status' => 'error', 'message' => "Missing parameter: $field"]));
-    }
-}
-
-require 'vendor/autoload.php';
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\SMTP;
-use PHPMailer\PHPMailer\Exception;
-
-$mail = new PHPMailer(true);
-
-try {
-    // Серверные настройки
-    $mail->SMTPDebug = $config['smtp_debug'];
-    $mail->isSMTP();
-    $mail->Host = $config['smtp_host'];
-    $mail->SMTPAuth = true;
-    $mail->Username = $config['smtp_username'];
-    $mail->Password = $config['smtp_password'];
-    $mail->SMTPSecure = $config['smtp_secure'];
-    $mail->Port = $config['smtp_port'];
-    
-    // Настройки кодировки
-    $mail->CharSet = 'UTF-8'; // Устанавливаем кодировку
-    $mail->Encoding = 'base64'; // Кодировка заголовков
-    
-    // Дополнительные настройки
-    $mail->SMTPOptions = [
-        'ssl' => [
-            'verify_peer' => false,
-            'verify_peer_name' => false,
-            'allow_self_signed' => true
-        ]
+function parseInput() {
+    $input = [
+        'get' => $_GET,
+        'post' => $_POST,
+        'json' => json_decode(file_get_contents('php://input'), true) ?? [],
+        'argv' => parseCliArgs()
     ];
+    
+    return array_merge($input['get'], $input['post'], $input['json'], $input['argv']);
+}
 
-    // Получатели
-    $mail->setFrom($config['smtp_username'], 'Имя отправителя'); // Можно указать имя в UTF-8
-    $mail->addAddress($input['to']);
-
-    // Содержание письма
-    $mail->isHTML(false);
-    $mail->Subject = '=?UTF-8?B?'.base64_encode($input['subject']).'?='; // Кодировка темы
-    $mail->Body = $input['body'];
-
-    $mail->send();
-    echo json_encode(['status' => 'success']);
-} catch (Exception $e) {
-    echo json_encode([
-        'status' => 'error',
-        'message' => "Message could not be sent. Mailer Error: {$mail->ErrorInfo}"
-    ]);
+function parseCliArgs() {
+    global $argv;
+    $args = [];
+    if (isset($argv)) {
+        foreach ($argv as $arg) {
+            if (strpos($arg, '=') !== false) {
+                list($key, $value) = explode('=', $arg);
+                $args[$key] = $value;
+            }
+        }
+    }
+    return $args;
 }
