@@ -1,3 +1,4 @@
+```
 composer require phpmailer/phpmailer
 
 POST /mailer22/send
@@ -30,3 +31,4 @@ smtp_port
 smtp_secure
 smtp_debug
 charset
+```
